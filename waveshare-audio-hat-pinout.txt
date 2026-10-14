@@ -1,0 +1,24 @@
+Wiki: https://www.waveshare.com/wiki/PCM5122-Audio-Board-A
+
+40 Pin Position     BCM Pin     Function
+2                   -           +5V
+3                   2           SDA - I2C data
+4                   -           +5V
+5                   3           SCL - I2C clock
+6                   -           GND
+12                  18          I2S CLK - Bit clock
+14                  -           GND
+20                  -           GND
+25                  -           GND
+30                  -           GND
+34                  -           GND
+35                  19          I2S LRCLK - Word clock
+39                  -           GND
+40                  21          I2S DAC - Serial data output
+
+Audio codec chip: PCM5122
+Control interface: I2C (I2C1 0x4C)
+Audio interface: I2S
+Firmware: I2C (I2C0 0x50)
+
+The board contains a flash EEPROM for holding firmware when working with Raspberry Pi OS (I2C0 0x50).

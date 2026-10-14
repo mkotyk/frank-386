@@ -26,6 +26,10 @@
 #include "dss.h"
 #include "adlib.h"
 #include "board_config.h"
+#ifdef PCM5122_HAT
+#include "pcm5122.h"
+#include <stdio.h>
+#endif
 #include <pico/time.h>
 
 #if HAS_AUDIO_PWM
@@ -208,6 +212,9 @@ uint8_t audio_get_volume(void) {
 
 
 void audio_init(void) {
+#ifdef PCM5122_HAT
+    audio_use_i2s = true;
+#else
 #if HAS_AUDIO_I2S && HAS_AUDIO_PWM
     if (boot_audio_output == AUDIO_OUTPUT_AUTO) {
         if (link_i2s_code == 0xFF) {
@@ -235,9 +242,14 @@ void audio_init(void) {
 #else
     audio_use_i2s = false;
 #endif
+#endif
 
 #if HAS_AUDIO_I2S
     if (audio_use_i2s) {
+#ifdef PCM5122_HAT
+        if (!pcm5122_init())
+            printf("PCM5122 HAT initialization failed; check I2C1 on GPIO2/3\n");
+#endif
         i2s_config = i2s_get_default_config();
         i2s_config.sample_freq = SOUND_FREQUENCY;
         i2s_config.dma_trans_count = 1;

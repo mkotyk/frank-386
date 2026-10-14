@@ -3,17 +3,17 @@
 #
 # release.sh - Build all release variants of frank-386
 #
-# Creates firmware files for each board variant (M1, M2, PC, Z2):
+# Creates firmware files for each board variant (M1, M2, PC, Z2, C2), including
+# a separate Z2 PCM5122 HAT build.
 #   - UF2 format for direct flashing
 #   - I2S and PWM audio variants (PC is PWM only)
 #
-# Output format: frank-386_<board>_<audio>_<version>.uf2
-#
+# Output format: frank-386_<board>_<audio>_<version>.uf2 (plus the Z2 HAT image)
 # Release configuration:
 #   - CPU: 378 MHz (stable overclock)
 #   - PSRAM: 133 MHz
 #   - USB HID: Enabled (keyboard support)
-#   - Debug: Disabled (no logs)
+#   - PCM5122 HAT: 504 MHz / 166 MHz PSRAM
 
 set -e
 
@@ -103,10 +103,9 @@ AUDIO_TYPES=("I2S" "PWM")
 CPU_SPEED="378"    # Stable overclock for releases
 PSRAM_SPEED="133"  # Stable PSRAM speed for releases
 
-# Count total builds: M1/M2/Z2 get I2S+PWM (6), PC gets PWM only (1),
-# C2 gets one build (its audio, video and USB configuration are all
-# forced by the board block in CMakeLists) = 8
-TOTAL_BUILDS=8
+# Count regular board/audio builds: M1/M2/Z2 get I2S+PWM (6), PC gets PWM
+# only (1), and C2 gets one build. Add one Z2 PCM5122 HAT build: 9 total.
+TOTAL_BUILDS=9
 BUILD_COUNT=0
 
 echo ""
@@ -125,6 +124,7 @@ build_variant() {
     local AUDIO_LC=$(echo "$AUDIO" | tr '[:upper:]' '[:lower:]')
 
     local OUTPUT_NAME="${3:-frank-386_${BOARD_LC}_${AUDIO_LC}_${VERSION}.uf2}"
+    local PCM5122_HAT=${4:-OFF}
 
     echo ""
     echo -e "${CYAN}[$BUILD_COUNT/$TOTAL_BUILDS] Building: $OUTPUT_NAME${NC}"
@@ -143,6 +143,7 @@ build_variant() {
     CMAKE_ARGS="$CMAKE_ARGS -DPSRAM_SPEED=$PSRAM_SPEED"
     CMAKE_ARGS="$CMAKE_ARGS -DUSB_HID_ENABLED=ON"      # Enable USB keyboard for releases
     CMAKE_ARGS="$CMAKE_ARGS -DDEBUG_ENABLED=OFF"       # Disable debug logs for releases
+    CMAKE_ARGS="$CMAKE_ARGS -DPCM5122_HAT=$PCM5122_HAT"
 
     # Configure with CMake
     if cmake $CMAKE_ARGS .. > /dev/null 2>&1; then
@@ -190,6 +191,9 @@ done
 # output, and USB HID as the sole input path. Passing an explicit output
 # name keeps it from being labelled with an audio choice it does not have.
 build_variant "C2" "I2S" "frank-386_c2_${VERSION}.uf2"
+CPU_SPEED="504"
+PSRAM_SPEED="166"
+build_variant "Z2" "I2S" "frank-386_z2_pcm5122_hat_${VERSION}.uf2" "ON"
 
 # ============================================================================
 # Clean up

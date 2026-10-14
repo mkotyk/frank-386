@@ -319,22 +319,38 @@ static inline uint get_psram_pin(void) {
 #define SDCARD_PIN_SPI0_MISO  SDCARD_PIN_D0
 #define SDCARD_PIN_SPI0_CS    SDCARD_PIN_D3
 
+// GPIO2/3 carry the PCM5122's I2C1 bus in the HAT profile.
+#ifdef PCM5122_HAT
+#define PS2_PIN_CLK  8
+#define PS2_PIN_DATA 9
+#else
 // PS/2 Keyboard Pins
 #define PS2_PIN_CLK  2
 #define PS2_PIN_DATA 3
+#endif
 
 // NES/SNES Gamepad Pins
 #define NESPAD_GPIO_CLK   4
 #define NESPAD_GPIO_DATA  6
 #define NESPAD_GPIO_LATCH 7
 
+// GPIO0/1 are reserved by the HAT firmware EEPROM's I2C0 bus.
+#ifdef PCM5122_HAT
+#define PS2_MOUSE_CLK  10
+#define PS2_MOUSE_DATA 11
+#else
 // PS/2 Mouse Pins (if available)
 #define PS2_MOUSE_CLK  0
 #define PS2_MOUSE_DATA 1
-
+#endif
+#ifdef PCM5122_HAT
+#define I2S_DATA_PIN       21
+#define I2S_CLOCK_PIN_BASE 18
+#else
 // I2S Audio Pins
 #define I2S_DATA_PIN       10
 #define I2S_CLOCK_PIN_BASE 11
+#endif
 
 #define PWM_RIGHT_PIN 10
 #define PWM_LEFT_PIN 11

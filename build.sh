@@ -8,6 +8,7 @@
 #   -c, --cpu        CPU speed in MHz: 378 (default), 504
 #   --vga            Force VGA output (instead of HDMI)
 #   --usb-hid        Enable USB HID keyboard (disables USB CDC)
+#   --pcm5122-hat   Build Z2 with the Waveshare PCM5122 Audio HAT
 #   --debug          Enable debug output
 #   -clean           Clean build directory first
 #   -h, --help       Show this help
@@ -35,6 +36,7 @@ PCSAMPLE="OFF"
 BBPROF="OFF"
 DISKCACHE="OFF"
 AUTOTYPE=""
+PCM5122_HAT="OFF"
 CLEAN=0
 
 # Parse arguments
@@ -148,6 +150,10 @@ while [[ $# -gt 0 ]]; do
             AUTOTYPE="$2"
             shift 2
             ;;
+        --pcm5122-hat)
+            PCM5122_HAT="ON"
+            shift
+            ;;
         -clean)
             CLEAN=1
             shift
@@ -162,6 +168,10 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+if [[ "$PCM5122_HAT" == "ON" ]]; then
+    BOARD="Z2"
+    AUDIO="I2S"
+fi
 
 # Olimex PC has no I2S hardware - force PWM
 if [[ "$BOARD" == "PC" && "$AUDIO" != "PWM" ]]; then
@@ -185,6 +195,7 @@ CMAKE_ARGS+=("-DPSRAM_SPEED=$PSRAM")
 CMAKE_ARGS+=("-DAUDIO_TYPE=$AUDIO")
 
 CMAKE_ARGS+=("-DUSB_HID_ENABLED=$USB_HID")
+CMAKE_ARGS+=("-DPCM5122_HAT=$PCM5122_HAT")
 
 # NOTE: every optional feature below is passed explicitly as ON or OFF.
 # Omitting the flag leaves whatever CMake cached from the previous
@@ -215,6 +226,7 @@ echo "  Audio: $AUDIO"
 echo "  CPU: $CPU MHz"
 echo "  PSRAM: $PSRAM MHz"
 echo "  USB HID: $USB_HID"
+echo "  PCM5122 HAT: $PCM5122_HAT"
 echo "  HDMI: $HDMI"
 echo "  VGA: $VGA"
 echo "  Debug: $DEBUG"

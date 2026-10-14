@@ -16,11 +16,15 @@ cmake_minimum_required(VERSION 3.13)
 
 # Board configuration variant (M1, M2, PC, Z2 or C2)
 set(BOARD "Z2" CACHE STRING "Board variant: M1, M2, PC, Z2 or C2")
+option(PCM5122_HAT "Use the Waveshare PCM5122 Audio HAT on Z2" OFF)
 # Alias for backwards compatibility
 if(DEFINED BOARD_VARIANT AND NOT DEFINED BOARD)
     set(BOARD ${BOARD_VARIANT})
 endif()
 
+if(PCM5122_HAT AND NOT BOARD STREQUAL "Z2")
+    message(FATAL_ERROR "PCM5122_HAT is only supported with BOARD=Z2")
+endif()
 if(BOARD STREQUAL "Z2")
     # Waveshare RP2350-PiZero uses RP2350B (48 GPIOs). The stock pico2
     # board definition selects RP2350A and therefore caps GPIOs at 0..29,
@@ -92,6 +96,9 @@ elseif(BOARD STREQUAL "C2")
     SET(BUILD_NAME "c2p2-${BUILD_NAME}")
 else()  # M2
     SET(BUILD_NAME "m2p2-${BUILD_NAME}")
+endif()
+if(PCM5122_HAT)
+    set(BUILD_NAME "${BUILD_NAME}-pcm5122-hat")
 endif()
 
 # CPU voltage selection based on speed
@@ -219,11 +226,18 @@ target_link_libraries(video_driver pico_stdlib hardware_dma hardware_pio hardwar
 add_library(audio_driver
     drivers/audio/audio.c
 )
+if(PCM5122_HAT)
+    target_sources(audio_driver PRIVATE drivers/audio/pcm5122.c)
+endif()
 target_include_directories(audio_driver PUBLIC drivers/audio src)
 target_compile_definitions(audio_driver PRIVATE
     BOARD_${BOARD}
     SOUND_FREQUENCY=44100
 )
+if(PCM5122_HAT)
+    target_compile_definitions(audio_driver PRIVATE PCM5122_HAT=1)
+    target_link_libraries(audio_driver hardware_i2c)
+endif()
 pico_generate_pio_header(audio_driver ${CMAKE_CURRENT_LIST_DIR}/drivers/audio/audio_i2s.pio)
 target_link_libraries(audio_driver pico_stdlib hardware_dma hardware_pio hardware_clocks hardware_sync hardware_irq hardware_pwm video_driver)
 
@@ -380,6 +394,9 @@ target_compile_definitions(${BUILD_NAME} PRIVATE
     EMU8950_NO_PERCUSSION_MODE=1
     EMU8950_LINEAR=1
 )
+if(PCM5122_HAT)
+    target_compile_definitions(${BUILD_NAME} PRIVATE PCM5122_HAT=1)
+endif()
 
 # Add DEBUG_ENABLED if enabled
 if(DEBUG_ENABLED)

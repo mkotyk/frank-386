@@ -94,6 +94,27 @@ Four GPIO layouts are supported: **M1**, **M2**, **PC** (Olimex), and **Z2** (Wa
 | BCLK   | 27      | 10      |
 | LRCLK  | 28      | 11      |
 
+### Waveshare PCM5122 Audio HAT (Z2)
+
+Build with `./build.sh --pcm5122-hat -504 --usb-hid` to select Z2, enable the
+HAT codec setup, use a 504 MHz CPU/166 MHz PSRAM, and enable USB HID. The HAT
+profile forces I2S and initializes the PCM5122 over I2C1. Its EEPROM uses
+I2C0, so the PS/2 pairs move to GPIO8/9 (keyboard) and GPIO10/11 (mouse).
+
+| Signal | RP2350 GPIO | 40-pin header |
+|--------|-------------|---------------|
+| I2S BCLK | 18 | 12 |
+| I2S LRCLK | 19 | 35 |
+| I2S DAC data | 21 | 40 |
+| Codec I2C1 SDA | 2 | 3 |
+| Codec I2C1 SCL | 3 | 5 |
+| HAT EEPROM I2C0 SDA/SCL | 0 / 1 | 27 / 28 |
+| PS/2 keyboard CLK/DATA | 8 / 9 | 24 / 21 |
+| PS/2 mouse CLK/DATA | 10 / 11 | 19 / 23 |
+
+See [waveshare-audio-hat-pinout.txt](waveshare-audio-hat-pinout.txt) for the
+HAT pinout reference.
+
 ## SD Card Setup
 
 ### Directory Structure
@@ -215,6 +236,9 @@ cd frank-386
 # Build with USB keyboard support
 ./build.sh --usb-hid
 
+# Build for the Waveshare PCM5122 Audio HAT (selects Z2/I2S)
+./build.sh --pcm5122-hat -504 --usb-hid
+
 # Custom build
 ./build.sh -b M1 -c 504 -p 166 --debug
 ```
@@ -227,6 +251,7 @@ cd frank-386
 | `-c, --cpu <MHz>` | CPU speed: 378 (default), 504 |
 | `-p, --psram <MHz>` | PSRAM speed: 133 (default), 166 |
 | `--usb-hid` | Enable USB keyboard (disables USB serial) |
+| `--pcm5122-hat` | Select Z2 and configure the Waveshare PCM5122 Audio HAT (forces I2S) |
 | `--hdmi` | Force HDMI output |
 | `--debug` | Enable debug output |
 | `-clean` | Clean build directory first |
@@ -240,6 +265,7 @@ cd frank-386
 | `-DBOARD=M2` | Use M2 GPIO layout (default) |
 | `-DBOARD=PC` | Use Olimex PICO-PC layout |
 | `-DBOARD=Z2` | Use Waveshare RP2350-PiZero layout |
+| `-DPCM5122_HAT=ON` | Enable Z2 PCM5122 codec setup and HAT GPIO mapping (requires `-DBOARD=Z2`) |
 | `-DCPU_SPEED=378` | CPU clock in MHz (378, 504) |
 | `-DPSRAM_SPEED=133` | PSRAM clock in MHz (133, 166) |
 | `-DUSB_HID_ENABLED=ON` | Enable USB keyboard (disables USB serial) |
@@ -263,6 +289,7 @@ This creates firmware files in the `release/` directory:
 - `frank-386_m2_<version>.uf2` - M2 board (Murmulator)
 - `frank-386_pc_<version>.uf2` - Olimex PICO-PC
 - `frank-386_z2_<version>.uf2` - Waveshare RP2350-PiZero
+- `frank-386_z2_pcm5122_hat_<version>.uf2` - Z2 with the PCM5122 Audio HAT
 
 ### Flashing
 
