@@ -74,13 +74,13 @@ bool ps2_mouse_init_device(void);
 void ps2_mouse_poll(void);
 
 /**
- * Get accumulated mouse state and reset deltas.
+ * Get accumulated mouse state and reset movement deltas.
  *
  * @param dx      Output: X movement since last call
  * @param dy      Output: Y movement since last call
  * @param wheel   Output: Wheel movement since last call
  * @param buttons Output: Current button state
- * @return true if there was any movement
+ * @return true if movement, wheel, or button state changed
  */
 bool ps2_mouse_get_state(int16_t *dx, int16_t *dy, int8_t *wheel, uint8_t *buttons);
 

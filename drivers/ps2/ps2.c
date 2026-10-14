@@ -23,7 +23,7 @@
 //=============================================================================
 
 #define PS2_CMD_RESET             0xFF
-#define PS2_CMD_RESEND            0xFE
+#define PS2_RESP_RESEND          0xFE
 #define PS2_CMD_SET_DEFAULTS      0xF6
 #define PS2_CMD_DISABLE_STREAM    0xF5
 #define PS2_CMD_ENABLE_STREAM     0xF4
@@ -221,6 +221,8 @@ static uint8_t calc_odd_parity(uint8_t data) {
  */
 static bool mouse_send_byte(uint8_t data) {
     uint8_t parity = calc_odd_parity(data);
+    const char *failure_stage = "unknown";
+    int failed_bit = -1;
 
     // Disable interrupt and stop PIO to take over GPIO
     if (mouse_streaming) {
@@ -250,10 +252,16 @@ static bool mouse_send_byte(uint8_t data) {
     // 3. Release clock - device will start clocking
     mouse_clk_release();
 
-    // 4. Wait for device to pull clock low
+    // Do not mistake the host's inhibit-low level for the first device edge.
+    if (!mouse_wait_clk(true, 15000)) {
+        failure_stage = "clock release after request-to-send";
+        goto fail;
+    }
+
+    // 4. Wait for the device's first falling edge
     if (!mouse_wait_clk(false, 15000)) {
-        mouse_data_release();
-        goto restart_pio;
+        failure_stage = "device clock after request-to-send";
+        goto fail;
     }
 
     // 5. Send 8 data bits on falling clock edges
@@ -263,8 +271,16 @@ static bool mouse_send_byte(uint8_t data) {
         } else {
             mouse_data_low();
         }
-        if (!mouse_wait_clk(true, 5000)) goto fail;
-        if (!mouse_wait_clk(false, 5000)) goto fail;
+        if (!mouse_wait_clk(true, 5000)) {
+            failure_stage = "data-bit clock high";
+            failed_bit = i;
+            goto fail;
+        }
+        if (!mouse_wait_clk(false, 5000)) {
+            failure_stage = "data-bit clock low";
+            failed_bit = i;
+            goto fail;
+        }
     }
 
     // 6. Send parity bit
@@ -273,19 +289,39 @@ static bool mouse_send_byte(uint8_t data) {
     } else {
         mouse_data_low();
     }
-    if (!mouse_wait_clk(true, 5000)) goto fail;
-    if (!mouse_wait_clk(false, 5000)) goto fail;
+    if (!mouse_wait_clk(true, 5000)) {
+        failure_stage = "parity clock high";
+        goto fail;
+    }
+    if (!mouse_wait_clk(false, 5000)) {
+        failure_stage = "parity clock low";
+        goto fail;
+    }
 
     // 7. Release data for stop bit
     mouse_data_release();
-    if (!mouse_wait_clk(true, 5000)) goto fail;
+    if (!mouse_wait_clk(true, 5000)) {
+        failure_stage = "stop-bit clock high";
+        goto fail;
+    }
 
     // 8. Wait for ACK (device pulls data low)
-    if (!mouse_wait_data(false, 5000)) goto fail;
-    if (!mouse_wait_clk(false, 5000)) goto fail;
-    if (!mouse_wait_clk(true, 5000)) goto fail;
-    if (!mouse_wait_data(true, 5000)) goto fail;
-
+    if (!mouse_wait_data(false, 5000)) {
+        failure_stage = "device ACK data low";
+        goto fail;
+    }
+    if (!mouse_wait_clk(false, 5000)) {
+        failure_stage = "ACK clock low";
+        goto fail;
+    }
+    if (!mouse_wait_clk(true, 5000)) {
+        failure_stage = "ACK clock high";
+        goto fail;
+    }
+    if (!mouse_wait_data(true, 5000)) {
+        failure_stage = "ACK data release";
+        goto fail;
+    }
     // Reinit GPIO for PIO control IMMEDIATELY
     pio_gpio_init(ps2_pio, mouse_clk_pin);
     pio_gpio_init(ps2_pio, mouse_data_pin);
@@ -306,8 +342,13 @@ static bool mouse_send_byte(uint8_t data) {
 fail:
     mouse_data_release();
     mouse_clk_release();
+    if (failed_bit >= 0) {
+        printf("Mouse: send_byte(0x%02X) failed at %s (%d)\n",
+               data, failure_stage, failed_bit);
+    } else {
+        printf("Mouse: send_byte(0x%02X) failed at %s\n", data, failure_stage);
+    }
 
-restart_pio:
     pio_gpio_init(ps2_pio, mouse_clk_pin);
     pio_gpio_init(ps2_pio, mouse_data_pin);
     gpio_pull_up(mouse_clk_pin);
@@ -353,17 +394,28 @@ static int mouse_get_byte(uint32_t timeout_ms) {
  * Send command and wait for ACK.
  */
 static bool mouse_send_command(uint8_t cmd) {
-    if (!mouse_send_byte(cmd)) {
-        printf("Mouse: send_byte(0x%02X) failed\n", cmd);
-        return false;
-    }
+    const int max_attempts = 3;
+    for (int attempt = 0; attempt < max_attempts; attempt++) {
+        if (!mouse_send_byte(cmd)) {
+            printf("Mouse: send_byte(0x%02X) failed\n", cmd);
+            return false;
+        }
 
-    int resp = mouse_get_byte(100);
-    if (resp != PS2_RESP_ACK) {
-        printf("Mouse: cmd 0x%02X got 0x%02X (expected ACK)\n", cmd, resp);
+        int resp = mouse_get_byte(100);
+        if (resp == PS2_RESP_ACK) {
+            return true;
+        }
+        if (resp == PS2_RESP_RESEND && attempt + 1 < max_attempts) {
+            printf("Mouse: cmd 0x%02X requested resend; retry %d/%d\n",
+                   cmd, attempt + 2, max_attempts);
+            continue;
+        }
+
+        printf("Mouse: cmd 0x%02X got 0x%02X after %d attempt(s) (expected ACK)\n",
+               cmd, resp, attempt + 1);
         return false;
     }
-    return true;
+    return false;
 }
 
 /**
@@ -378,8 +430,8 @@ static bool mouse_send_command_param(uint8_t cmd, uint8_t param) {
 // Mouse Packet Processing
 //=============================================================================
 
-// Track when button was last pressed/released for timeout
-static uint32_t mouse_button_press_time = 0;
+// Track button changes until the caller retrieves mouse state.
+static bool mouse_buttons_pending = false;
 static uint8_t mouse_last_buttons = 0;
 static uint32_t mouse_valid_packet_count = 0;
 
@@ -419,17 +471,15 @@ static void mouse_process_packet(void) {
 
     // Extract button state from packet
     uint8_t new_buttons = status & 0x07;
+    if (new_buttons != mouse_state.buttons) {
+        mouse_buttons_pending = true;
+    }
 
     // Debug: Log button state changes
     if (new_buttons != mouse_last_buttons) {
         printf("PS2: Button state changed: 0x%02X -> 0x%02X (packet #%lu, status=0x%02X)\n",
                mouse_last_buttons, new_buttons, mouse_valid_packet_count, status);
         mouse_last_buttons = new_buttons;
-
-        // Track when buttons are pressed for timeout detection
-        if (new_buttons != 0) {
-            mouse_button_press_time = time_us_32();
-        }
     }
 
     // Update button state
@@ -707,23 +757,10 @@ bool ps2_mouse_get_state(int16_t *dx, int16_t *dy, int8_t *wheel, uint8_t *butto
     uint irq_num = (ps2_pio == pio0) ? PIO0_IRQ_1 : PIO1_IRQ_1;
     irq_set_enabled(irq_num, false);
 
-    // FAILSAFE: If button has been pressed for > 150ms without release,
-    // force it to released state (handles stuck button bug)
-    // Normal clicks are < 150ms, so this provides quick response
-    if (mouse_state.buttons != 0 && mouse_button_press_time != 0) {
-        uint32_t button_held_us = time_us_32() - mouse_button_press_time;
-        if (button_held_us > 150000) {  // 150ms timeout
-            printf("PS2: FAILSAFE - Button stuck for %lu ms, forcing release\n",
-                   button_held_us / 1000);
-            mouse_state.buttons = 0;
-            mouse_last_buttons = 0;
-            mouse_button_press_time = 0;
-        }
-    }
-
     bool has_data = (mouse_state.delta_x != 0 ||
                      mouse_state.delta_y != 0 ||
-                     mouse_state.wheel != 0);
+                     mouse_state.wheel != 0 ||
+                     mouse_buttons_pending);
 
     if (dx) *dx = mouse_state.delta_x;
     if (dy) *dy = mouse_state.delta_y;
@@ -733,6 +770,7 @@ bool ps2_mouse_get_state(int16_t *dx, int16_t *dy, int8_t *wheel, uint8_t *butto
     mouse_state.delta_x = 0;
     mouse_state.delta_y = 0;
     mouse_state.wheel = 0;
+    mouse_buttons_pending = false;
 
     // Re-enable mouse interrupt
     irq_set_enabled(irq_num, true);
